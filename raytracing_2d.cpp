@@ -235,4 +235,42 @@ public:
     }
 };
 
-int main(){}
+int main(){
+    Engine engine;
+    Scene scene;
+
+    scene.objs = {
+        Object(vec3(0.0f, 0.0f, -5.0f), 2.0f, Material(vec3(1.0f, 0.2f, 0.2f), 0.5f, 0.0f)),   // Moved further back and made bigger
+        Object(vec3(3.0f, 0.0f, -7.0f), 1.5f, Material(vec3(0.2f, 1.0f, 0.2f), 0.5f, 0.0f))    // Adjusted position and size
+    };
+    std::vector<unsigned char> pixels(WIDTH * HEIGHT * 3);
+    while(!glfwWindowShouldClose(engine.window)){
+        glClear(GL_COLOR_BUFFER_BIT);
+
+        // render texture (pxl by pxl)
+        for(int y = 0; y < HEIGHT; ++y){
+            for(int x = 0; x < WIDTH; ++x){
+                float aspectRatio = float(WIDTH) / float(HEIGHT);
+                float u = float(x) / float(WIDTH);
+                float v = float(y) / float(HEIGHT);
+
+                // direction of ray threw camera
+                vec3 direction(
+                    (2.0f * u - 1.0f) * aspectRatio,
+                    -(2.0f * v - 1.0f),  // Flipped to correct orientation
+                    -1.0f  // Forward direction (negative z)
+                );
+                Ray ray(vec3(0.0f, 0.0f, 0.0f), normalize(direction));
+                vec3 color = scene.trace(ray);
+
+                int index = (y * WIDTH + x) * 3;
+                pixels[index + 0] = static_cast<unsigned char>(color.r * 255);
+                pixels[index + 1] = static_cast<unsigned char>(color.g * 255);
+                pixels[index + 2] = static_cast<unsigned char>(color.b * 255);
+            }
+        }        
+        engine.renderScene(pixels);
+    }
+
+    glfwTerminate();
+}
