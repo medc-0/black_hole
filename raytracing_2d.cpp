@@ -82,8 +82,8 @@ public:
         glAttachShader(shaderProgram, fragmentShader);
         glLinkProgram(shaderProgram);
 
-        glDeleteProgram(vertexShader);
-        glDeleteProgram(fragmentShader);
+        glDeleteShader(vertexShader);
+        glDeleteShader(fragmentShader);
 
         return shaderProgram;
     };
@@ -121,5 +121,63 @@ public:
         std::vector<GLuint> VAOtexture = {VAO, texture};
         return VAOtexture;
     };
-    void renderScene(std::vector<unsigned char> pixels);
+    void renderScene(std::vector<unsigned char> pixels) {
+        // update texture w/ ray-tracing results
+        glBindTexture(GL_TEXTURE_2D, texture);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, WIDTH, HEIGHT, 0, GL_RGB, 
+                    GL_UNSIGNED_BYTE, pixels.data());
+
+        // clear screen and draw textured quad
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glUseProgram(shaderProgram);
+
+        GLint textureLocation = glGetUniformLocation(shaderProgram, "screenTexture");
+        glUniform1i(textureLocation, 0);
+
+        glBindVertexArray(quadVAO);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+
+        glfwSwapBuffers(window);
+        glfwPollEvents();
+    };
+};
+
+struct Ray{
+    vec3 direction;
+    vec3 origin;
+    Ray(vec3 o, vec3 d) : origin(o), direction(normalize(d)) {}
+};
+struct Material{
+    vec3 color;
+    float specular;
+    float emission;
+    Material(vec3 c, float s, float e) : color(c), specular(s), emission(e) {}
+};
+struct Object {
+    vec3 centre;
+    float radius;
+    Material material;
+
+    Object(vec3 c, float r, Material m) : centre(c), radius(r), material(m) {}
+
+    bool Intersect(Ray &ray, float &t){
+        vec3 oc = ray.origin - centre;
+        float a = glm::dot(ray.direction, ray.direction); // ray direction scaled by t
+        float b = 2.0f * glm::dot(oc, ray.direction);
+        float c = glm::dot(oc, oc) - radius * radius; // adjustment by sphere radius
+        double discriminant = b*b - 4*a*c;
+        if(discriminant < 0){return false;} // no intersection with sphere
+
+        float intercept = (-b - sqrt(discriminant)) / (2.0f*a);
+        if(intercept < 0){
+            intercept = (-b + sqrt(discriminant)) / (2.0f*a);
+            if(intercept<0){return false;}
+        }
+        t = intercept;
+        return true;
+    };
+
+    vec3 getNormal(vec3 &point) const {
+        return normalize(point - centre);
+    }
 };
