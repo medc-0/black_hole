@@ -9,8 +9,29 @@
 using namespace glm;
 
 /* global variables */
-constexpr int WIDTH = 800;
-constexpr int HEIGHT = 600;
+int WIDTH = 800;
+int HEIGHT = 600;
+
+/* Camera Variables */
+vec3 cameraPos   = vec3(0.0f, 0.0f, 3.0f);
+vec3 cameraFront = vec3(0.0f, 0.0f, -1.0f);
+vec3 cameraUp    = vec3(0.0f, 1.0f, 0.0f);
+float deltaTime  = 0.0f; 
+float lastFrame  = 0.0f;
+
+void framebuffer_size_callback(GLFWwindow* window, int width, int height) {
+    glViewport(0, 0, width, height);
+    WIDTH = width;
+    HEIGHT = height;
+}
+
+void processInput(GLFWwindow *window) {
+    float cameraSpeed = 2.5f * deltaTime; 
+    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) cameraPos += cameraSpeed * cameraFront;
+    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) cameraPos -= cameraSpeed * cameraFront;
+    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) cameraPos -= normalize(cross(cameraFront, cameraUp)) * cameraSpeed;
+    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) cameraPos += normalize(cross(cameraFront, cameraUp)) * cameraSpeed;
+}
 
 /* Engine Class */
 class Engine {
@@ -35,8 +56,11 @@ public:
             return nullptr;
         }
 
-        GLFWwindow* window = glfwCreateWindow(WIDTH, HEIGHT, "ray tracer", NULL, NULL);
+        GLFWmonitor* primary = glfwGetPrimaryMonitor();
+        GLFWwindow* window = glfwCreateWindow(WIDTH, HEIGHT, "ray tracer", primary, NULL);
         glfwMakeContextCurrent(window);
+
+        glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
 
         glewExperimental = GL_TRUE;
         if (glewInit() != GLEW_OK){
@@ -235,42 +259,60 @@ public:
     }
 };
 
-int main(){
+int main() {
     Engine engine;
     Scene scene;
-
+    
     scene.objs = {
-        Object(vec3(0.0f, 0.0f, -5.0f), 2.0f, Material(vec3(1.0f, 0.2f, 0.2f), 0.5f, 0.0f)),   // Moved further back and made bigger
-        Object(vec3(3.0f, 0.0f, -7.0f), 1.5f, Material(vec3(0.2f, 1.0f, 0.2f), 0.5f, 0.0f))    // Adjusted position and size
+        Object(vec3(0.0f, 0.0f, -5.0f), 1.5f, Material(vec3(1.0f, 0.2f, 0.2f), 0.5f, 0.0f)),
+        Object(vec3(3.0f, -1.0f, -7.0f), 1.0f, Material(vec3(0.2f, 0.8f, 1.0f), 0.5f, 0.0f))
     };
-    std::vector<unsigned char> pixels(WIDTH * HEIGHT * 3);
-    while(!glfwWindowShouldClose(engine.window)){
-        glClear(GL_COLOR_BUFFER_BIT);
 
-        // render texture (pxl by pxl)
-        for(int y = 0; y < HEIGHT; ++y){
-            for(int x = 0; x < WIDTH; ++x){
-                float aspectRatio = float(WIDTH) / float(HEIGHT);
-                float u = float(x) / float(WIDTH);
-                float v = float(y) / float(HEIGHT);
+    std::vector<unsigned char> pixels;
 
-                // direction of ray threw camera
-                vec3 direction(
-                    (2.0f * u - 1.0f) * aspectRatio,
-                    -(2.0f * v - 1.0f),  // Flipped to correct orientation
-                    -1.0f  // Forward direction (negative z)
-                );
-                Ray ray(vec3(0.0f, 0.0f, 0.0f), normalize(direction));
+    while (!glfwWindowShouldClose(engine.window)) {
+        float currentFrame = glfwGetTime();
+        deltaTime = currentFrame - lastFrame;
+        lastFrame = currentFrame;
+
+        processInput(engine.window);
+
+        if (WIDTH <= 0 || HEIGHT <= 0) {
+            glfwPollEvents();
+            continue;
+        }
+        
+        size_t neededSize = (size_t)WIDTH * HEIGHT * 3;
+        if (pixels.size() != neededSize) {
+            pixels.resize(neededSize);
+        }
+
+        vec3 forward = cameraFront;
+        vec3 right = normalize(cross(forward, vec3(0.0f, 1.0f, 0.0f)));
+        vec3 up = cross(right, forward);
+
+        float aspectRatio = float(WIDTH) / float(HEIGHT);
+        float fov = 1.0f;
+
+        for (int y = 0; y < HEIGHT; ++y) {
+            for (int x = 0; x < WIDTH; ++x) {
+                float u = (2.0f * x / WIDTH - 1.0f) * aspectRatio * fov;
+                float v = (1.0f - 2.0f * y / HEIGHT) * fov;
+
+                vec3 rayDir = normalize(forward + u * right + v * up);
+                Ray ray(cameraPos, rayDir);
+
                 vec3 color = scene.trace(ray);
 
                 int index = (y * WIDTH + x) * 3;
-                pixels[index + 0] = static_cast<unsigned char>(color.r * 255);
-                pixels[index + 1] = static_cast<unsigned char>(color.g * 255);
-                pixels[index + 2] = static_cast<unsigned char>(color.b * 255);
+                pixels[index + 0] = (unsigned char)(clamp(color.r, 0.0f, 1.0f) * 255);
+                pixels[index + 1] = (unsigned char)(clamp(color.g, 0.0f, 1.0f) * 255);
+                pixels[index + 2] = (unsigned char)(clamp(color.b, 0.0f, 1.0f) * 255);
             }
-        }        
+        }
         engine.renderScene(pixels);
     }
 
     glfwTerminate();
+    return 0;
 }
