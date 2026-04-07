@@ -66,3 +66,87 @@ struct Engine {
         glLoadIdentity();
     }
 };
+
+Engine engine;
+struct BlackHole {
+    vec3 position;
+    double mass;
+    double radius;
+    double r_s;
+
+    BlackHole(vec3 pos, float m) : position(pos), mass(m) {r_s = 2.0 * G * mass / (c*c);}
+    void draw() {
+        glBegin(GL_TRIANGLE_FAN);
+        glColor3f(1.0f, 0.0f, 0.0f);
+        glVertex2f(0.0f, 0.0f);
+        for(int i = 0; i <= 100; i++) {
+            float angle = 2.0f * M_PI * i / 100;
+            float x = r_s * cos(angle);
+            float y = r_s * sin(angle);
+            glVertex2f(x, y);
+        }
+        glEnd();
+    }
+};
+BlackHole SagA(vec3(0.0f, 0.0f, 0.0f), 8.54e36); // Sagittarius A black hole
+struct Ray{
+    double x;   double y;
+    double r;   double phi;
+    double dr;  double dphi;
+    vector<vec2> trail;
+    double E, L;
+
+    Ray(vec2 pos, vec2 dir) : x(pos.x), y(pos.y), r(sqrt(pos.x * pos.x + pos.y * pos.y)), phi(atan2(pos.y, pos.x)), dr(dir.x), dphi(dir.y) {
+        // step 1) get polar coords (r, phi) :
+        this->r = sqrt(x*x + y*y);
+        this->phi = atan2(y, x);
+        // step 2) seed velocities :
+        dr = dir.x * cos(phi) + dir.y * sin(phi); // m/s
+        dphi  = ( -dir.x * sin(phi) + dir.y * cos(phi) ) / r;
+        // step 3) store conserved quantities
+        L = r*r * dphi;
+        double f = 1.0 - SagA.r_s/r;  
+        double dt_dλ = sqrt( (dr*dr)/(f*f) + (r*r*dphi*dphi)/f );
+        E = f * dt_dλ;
+        // step 4) start trail :
+        trail.push_back({x, y});
+    }
+    void draw(const std::vector<Ray>& rays) {
+        glPointSize(2.0f);
+        glColor3f(1.0f, 0.0f, 0.0f);
+        glBegin(GL_POINTS);
+          for (const auto& ray : rays) {
+              glVertex2f(ray.x, ray.y);
+          }
+        glEnd();
+    
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glLineWidth(1.0f);
+    
+        for (const auto& ray : rays) {
+            size_t N = ray.trail.size();
+            if (N < 2) continue;
+    
+            glBegin(GL_LINE_STRIP);
+            for (size_t i = 0; i < N; ++i) {
+                // older points (i=0) get alpha≈0, newer get alpha≈1
+                float alpha = float(i) / float(N - 1);
+                glColor4f(1.0f, 1.0f, 1.0f, std::max(alpha, 0.05f));
+                glVertex2f(ray.trail[i].x, ray.trail[i].y);
+            }
+            glEnd();
+        }
+    
+        glDisable(GL_BLEND);
+    }
+    void step(double dλ, double rs) {
+        // 1) integrate (r,φ,dr,dφ)
+        if(r <= rs) return;
+        rk4Step(*this, dλ, rs);
+        x = r * cos(phi);
+        y = r * sin(phi);
+        trail.push_back({ float(x), float(y) });
+    }
+};
+vector<Ray> rays;
